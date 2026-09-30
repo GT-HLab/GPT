@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a small GPT works, step by step</title>
+<style>
+:root{color-scheme:light dark;--bg:#FFFFFF;--surface-1:#F5F4EE;--surface-2:#FFFFFF;--text-primary:#1F1E1D;--text-secondary:#5F5E5A;--text-muted:#8A8880;--border:rgba(31,30,29,.15);--border-strong:rgba(31,30,29,.3);--border-stronger:rgba(31,30,29,.55);--radius:8px;--font:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#1F1E1D;--surface-1:#2C2B29;--surface-2:#262624;--text-primary:#F1EFE8;--text-secondary:#B4B2A9;--text-muted:#8A8880;--border:rgba(241,239,232,.18);--border-strong:rgba(241,239,232,.32);--border-stronger:rgba(241,239,232,.55)}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text-primary);font-family:var(--font);line-height:1.5}
+.app{max-width:760px;margin:0 auto;padding:16px 16px 32px}
+h1{font-size:18px;font-weight:500;margin:0 0 12px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.scroll{overflow-x:auto}
+svg{display:block}
+svg text{font-family:var(--font)}
+.t{font-size:14px;fill:var(--text-primary)}
+.th{font-size:14px;font-weight:500;fill:var(--text-primary)}
+.ts{font-size:12px;fill:var(--text-secondary)}
+.box{fill:var(--surface-1);stroke:var(--border-strong)}
+.arr{stroke:var(--text-secondary);stroke-width:1.5;fill:none}
+.leader{stroke:var(--text-muted);stroke-width:.5;stroke-dasharray:4 3;fill:none}
+.c-purple>rect{fill:#EEEDFE;stroke:#534AB7}.c-purple .th,.c-purple .t{fill:#3C3489}.c-purple .ts{fill:#534AB7}
+.c-teal>rect{fill:#E1F5EE;stroke:#0F6E56}.c-teal .th,.c-teal .t{fill:#085041}.c-teal .ts{fill:#0F6E56}
+.c-coral>rect{fill:#FAECE7;stroke:#993C1D}.c-coral .th,.c-coral .t{fill:#712B13}.c-coral .ts{fill:#993C1D}
+.c-gray>rect{fill:#F1EFE8;stroke:#5F5E5A}.c-gray .th,.c-gray .t{fill:#444441}.c-gray .ts{fill:#5F5E5A}
+.c-blue>rect{fill:#E6F1FB;stroke:#185FA5}.c-blue .th,.c-blue .t{fill:#0C447C}.c-blue .ts{fill:#185FA5}
+.c-green>rect{fill:#EAF3DE;stroke:#3B6D11}.c-green .th,.c-green .t{fill:#27500A}.c-green .ts{fill:#3B6D11}
+.c-amber>rect{fill:#FAEEDA;stroke:#854F0B}.c-amber .th,.c-amber .t{fill:#633806}.c-amber .ts{fill:#854F0B}
+@media (prefers-color-scheme:dark){
+.c-purple>rect{fill:#3C3489;stroke:#AFA9EC}.c-purple .th,.c-purple .t{fill:#CECBF6}.c-purple .ts{fill:#AFA9EC}
+.c-teal>rect{fill:#085041;stroke:#5DCAA5}.c-teal .th,.c-teal .t{fill:#9FE1CB}.c-teal .ts{fill:#5DCAA5}
+.c-coral>rect{fill:#712B13;stroke:#F0997B}.c-coral .th,.c-coral .t{fill:#F5C4B3}.c-coral .ts{fill:#F0997B}
+.c-gray>rect{fill:#444441;stroke:#B4B2A9}.c-gray .th,.c-gray .t{fill:#D3D1C7}.c-gray .ts{fill:#B4B2A9}
+.c-blue>rect{fill:#0C447C;stroke:#85B7EB}.c-blue .th,.c-blue .t{fill:#B5D4F4}.c-blue .ts{fill:#85B7EB}
+.c-green>rect{fill:#27500A;stroke:#97C459}.c-green .th,.c-green .t{fill:#C0DD97}.c-green .ts{fill:#97C459}
+.c-amber>rect{fill:#633806;stroke:#EF9F27}.c-amber .th,.c-amber .t{fill:#FAC775}.c-amber .ts{fill:#EF9F27}
+}
+button{font:inherit;font-size:13px;padding:5px 10px;background:transparent;color:var(--text-primary);border:.5px solid var(--border-strong);border-radius:var(--radius);cursor:pointer}
+button:hover{background:var(--surface-1)}
+button:focus-visible,input:focus-visible{outline:2px solid #378ADD;outline-offset:2px}
+#nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0 0}
+#pills{display:flex;gap:6px;flex-wrap:wrap}
+#pills button{padding:5px 9px;min-width:30px}
+#nav button.on,#hb button.on,#hh button.on{background:var(--surface-1);border-color:var(--border-stronger);font-weight:500}
+#ttl{font-size:15px;font-weight:500;margin:14px 0 4px}
+#cap{font-size:14px;color:var(--text-secondary);margin:8px 0 0;min-height:22px}
+#map{width:100%;height:auto;max-height:104px}
+#cv{width:100%;height:auto;max-height:calc(100vh - 330px);min-height:300px}
+@media (max-width:640px){#cv{min-width:560px;max-height:none}#map{min-width:560px}}
+</style>
+</head>
+<body>
+<main class="app">
+<h1>How a small GPT works, step by step</h1>
+<h2 class="sr-only">Complete step-by-step walkthrough of a small GPT including the three layer norms, all matrices and biases, per-head attention, the MLP, the output head, and the full training loop</h2>
+<div class="scroll"><svg id="map" viewBox="0 0 680 108" role="img"><title>Where this step sits in the training loop</title><desc>Map of batch, embed, attention, add, MLP, output and loss, with the middle three repeated N times and a return arrow from the loss back to the batch. The current step is highlighted.</desc><defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><g id="mapg"></g></svg></div>
+<div id="nav"><button id="bk">Back</button><div id="pills"></div><button id="nx">Next</button></div>
+<div id="hctl" style="display:none;align-items:center;gap:10px;margin:10px 0 0;flex-wrap:wrap"><span style="font-size:14px;color:var(--text-secondary)">Heads</span><div id="hb" style="display:flex;gap:6px"></div><span id="hl2" style="font-size:14px;color:var(--text-secondary);margin-left:8px">Show head</span><div id="hh" style="display:flex;gap:6px"></div></div>
+<div id="tctl" style="display:none;align-items:center;gap:10px;margin:10px 0 0"><label for="trin" style="font-size:14px;color:var(--text-secondary)">Training progress</label><input type="range" id="trin" min="0" max="100" value="0" step="1" style="flex:1;max-width:320px"><span id="trv" style="font-size:14px;min-width:80px">step 0</span></div>
+<p id="ttl"></p>
+<div class="scroll"><svg id="cv" viewBox="0 0 680 360" role="img"><title>GPT walkthrough step</title><desc>Detail view of the current step of the model.</desc><defs><marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><g id="stage"></g></svg></div>
+<p id="cap"></p>
+</main>
+<script>
+const CH=['F','i','r','s','t','_','C','i'],ID=[18,47,56,57,58,1,15,47],TG=['i','r','s','t','_','C','i','t'],TID={i:47,r:56,s:57,t:58,_:1,C:15};
+let cur=0,sel=7,hd=0,nh=4,hs=8,si=7,sj=4,tr=0,MK='arrow';
+const hc=k=>k%2?'#1D9E75':'#EF9F27';
+function v(s,k){const x=Math.sin(s*12.9898+k*78.233)*43758.5453;return x-Math.floor(x);}
+function T(x,y,s,c,a){return `<text class="${c}" x="${x}" y="${y}" text-anchor="${a||'middle'}" dominant-baseline="central">${s}</text>`;}
+function B(x,y,w,h,cls,t1,t2){return `<g class="${cls}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" stroke-width="0.5"/>${t2?T(x+w/2,y+h/2-9,t1,'th')+T(x+w/2,y+h/2+9,t2,'ts'):T(x+w/2,y+h/2,t1,'th')}</g>`;}
+function A(x1,y1,x2,y2){return `<line class="arr" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" marker-end="url(#${MK})"/>`;}
+function heat(x,y,rows,cols,cw,rh,col,fn,hl){let s='';for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){s+=`<rect x="${x+c*cw}" y="${y+r*rh}" width="${cw}" height="${rh}" fill="${col}" opacity="${(0.12+0.75*fn(r,c)).toFixed(2)}"/>`;}s+=`<rect x="${x}" y="${y}" width="${cols*cw}" height="${rows*rh}" fill="none" stroke="${col}" stroke-width="1"/>`;(hl||[]).forEach(r=>{s+=`<rect x="${x}" y="${y+r*rh}" width="${cols*cw}" height="${rh}" fill="none" stroke="#BA7517" stroke-width="2"/>`;});return s;}
+function sheat(x,y,rows,cols,cw,rh,fn,sc,hl){let s='';for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const q=fn(r,c);s+=`<rect x="${x+c*cw}" y="${y+r*rh}" width="${cw}" height="${rh}" fill="${q>=0?'#378ADD':'#D85A30'}" opacity="${Math.min(0.95,0.06+Math.abs(q)/sc*0.9).toFixed(2)}"/>`;}s+=`<rect x="${x}" y="${y}" width="${cols*cw}" height="${rows*rh}" fill="none" stroke="#888780" stroke-width="0.5"/>`;(hl||[]).forEach(r=>{s+=`<rect x="${x}" y="${y+r*rh}" width="${cols*cw}" height="${rh}" fill="none" stroke="#BA7517" stroke-width="2"/>`;});return s;}
+function b(h,i,j){const t=h%4;let x=v(h*97+i*11+2,j)*1.2;if(t==0)x=v(h*97+i*11+2,j)*2.2+(j==i?0.6:0)+(i==7&&j==4?1.8:0)+(i==7&&j==6?1.4:0);else if(t==1)x+=j==i-1?2.6:0;else if(t==2)x+=j==i?2.6:0;else x+=j==0?2.2:0;return x;}
+function Wm(h){const M=[];for(let i=0;i<8;i++){const r=[];let m=0;for(let j=0;j<8;j++){if(j>i){r.push(0);continue}const e=Math.exp(b(h,i,j));r.push(e);m+=e;}M.push(r.map(x=>x/m));}return M;}
+const X0=(r,c)=>(v(ID[r],c)+v(100+r,c))/2;
+const WQ=(r,c)=>v(1000+r*3,c),WK=(r,c)=>v(1100+r*3,c),WV=(r,c)=>v(1200+r*3,c),Q=(r,c)=>v(200+r,c),K=(r,c)=>v(300+r,c),V=(r,c)=>v(400+r,c);
+function outMat(h){const M=Wm(h),O=[];for(let i=0;i<8;i++){const r=[];for(let c=0;c<hs;c++){let a=0;for(let j=0;j<=i;j++)a+=M[i][j]*V(j,h*hs+c);r.push(a);}O.push(r);}return O;}
+function trainLoss(t){return 1.5+2.7*Math.exp(-5*t);}
+function probs(){const t=tr/100,L=trainLoss(t),p0=Math.exp(-L),bst=Math.log(p0*66/(1-p0)),P=[],Z=[];for(let r=0;r<8;r++){const z=[];for(let c=0;c<65;c++)z.push((v(r*7+1,c)-0.5)*1.6+(c==TID[TG[r]]?bst:0));const e=z.map(Math.exp),sum=e.reduce((a,q)=>a+q,0);Z.push(z);P.push(e.map(q=>q/sum));}return{Z,P};}
+function stats(a){const m=a.reduce((p,q)=>p+q,0)/a.length,vr=a.reduce((p,q)=>p+(q-m)*(q-m),0)/a.length;return[m,Math.sqrt(vr),vr];}
+function rowData(r,k){const sh=k*50,M=(v(r+sh,99)-0.5)*4,A2=0.5+v(r+sh,98)*2.5,raw=[];for(let c=0;c<32;c++)raw.push((v(620+r+sh,c)-0.5)*2*A2+M);const[m,sd,vr]=stats(raw),z=raw.map(q=>(q-m)/Math.sqrt(vr+1e-5)),y=z.map((q,c)=>q*(1+0.3*(v(1700+k,c)-0.5)*2)+0.3*(v(1750+k,c)-0.5)*2);return{raw,z,y,m,sd};}
+const LNS={};function lnData(k){if(!LNS[k])LNS[k]=[0,1,2,3,4,5,6,7].map(r=>rowData(r,k));return LNS[k];}
+function lnStep(k){const D=lnData(k),d=D[sel],zs=stats(d.z);let s=T(86,36,'x (8, 32)','th')+T(326,36,'normalized (8, 32)','th')+T(566,36,'output (8, 32)','th');
+for(let r=0;r<8;r++)s+=T(22,57+14*r,CH[r],'ts','end');
+s+=sheat(30,50,8,32,3.5,14,(r,c)=>D[r].raw[c],4,[sel])+A(150,106,258,106)+T(204,92,'(x − mean) / std','ts');
+s+=sheat(270,50,8,32,3.5,14,(r,c)=>D[r].z[c],2.5,[sel])+A(390,106,498,106)+T(444,92,'× γ + β','ts');
+s+=sheat(510,50,8,32,3.5,14,(r,c)=>D[r].y[c],2.5,[sel]);
+s+=T(502,195,'γ','ts','end')+heat(510,190,1,32,3.5,10,'#7F77DD',(r,c)=>(1+0.3*(v(1700+k,c)-0.5)*2-0.7)/0.6,[]);
+s+=T(502,213,'β','ts','end')+sheat(510,208,1,32,3.5,10,(r,c)=>0.3*(v(1750+k,c)-0.5)*2,0.35,[]);
+s+=T(566,234,'learned, 32 numbers each','ts');
+s+=T(30,196,`row ${sel} (${CH[sel]}) before: mean ${d.m.toFixed(2)}, std ${d.sd.toFixed(2)}`,'ts','start');
+s+=T(30,218,`after normalizing: mean ${zs[0].toFixed(2)}, std ${zs[1].toFixed(2)}`,'ts','start');
+s+=T(340,268,'Each row is normalized on its own, across its 32 channels. No row sees another.','ts');
+const n2=k==1?'Layer norm 1: its output feeds Wq, Wk, Wv. The raw x keeps travelling on the skip path.':k==2?'Layer norm 2 (own γ, β): its output feeds W1 in the MLP. The raw x keeps travelling on the skip path.':'Final layer norm (own γ, β): its output feeds W_out.';
+s+=T(340,290,n2,'ts');
+s+=`<rect x="150" y="309" width="10" height="10" fill="#378ADD"/>`+T(166,314,'positive','ts','start')+`<rect x="250" y="309" width="10" height="10" fill="#D85A30"/>`+T(266,314,'negative','ts','start');
+for(let r=0;r<8;r++)for(const xx of [30,270,510])s+=`<rect x="${xx}" y="${50+14*r}" width="112" height="14" fill="transparent" style="cursor:pointer" onclick="pickRow(${r})"/>`;
+return s;}
+function sBatch(){const TXT='First Citizen: Before we'.split('').map(c=>c==' '?'_':c);let s='';
+TXT.forEach((c,i)=>{s+=B(28+26*i,48,24,24,i<=8?'c-amber':i>=15?'c-teal':'c-gray',c);});
+s+=T(145,32,'window 1','ts')+T(534,32,'window 2','ts')+T(340,92,'B windows are cut from random places in the text','ts');
+const x=['F','i','r','s','t','_','C','i'],y=['i','r','s','t','_','C','i','t'];
+s+=T(14,151,'input x','ts','start')+T(14,221,'target y','ts','start');
+for(let i=0;i<8;i++){const cx=170+46*i;s+=T(cx,122,'p'+i,'ts')+B(cx-20,136,40,30,'c-amber',x[i])+A(cx,168,cx,204)+B(cx-20,206,40,30,'c-green',y[i]);}
+s+=T(340,262,'Position i sees x_0 to x_i and must predict y_i, the next character.','ts');
+s+=T(340,284,'A batch stacks B windows: x is (B, 8) and y is (B, 8), so one batch gives B × 8 predictions.','ts');
+return s;}
+function s0(){let s=T(14,45,'characters','ts','start')+T(14,115,'token IDs','ts','start');
+for(let i=0;i<8;i++){const cx=172+56*i;s+=B(cx-22,30,44,30,'c-gray',CH[i])+A(cx,62,cx,98)+B(cx-22,100,44,30,'c-blue',ID[i]);}
+s+=T(596,115,'used once','ts','start');
+s+=A(368,132,368,152)+T(380,142,'each ID picks one row of the table','ts','start');
+s+=T(124,170,'token table (65 × 32)','th')+heat(60,182,65,32,4,3,'#1D9E75',(r,c)=>v(r,c),[]);
+[...new Set(ID)].forEach(id=>{s+=`<rect x="60" y="${182+id*3}" width="128" height="3" fill="none" stroke="#BA7517" stroke-width="1.5"/>`;});
+s+=A(192,270,360,270)+T(276,252,'copy the 8 selected rows','ts');
+s+=T(460,170,'rows copied (8, 32)','th')+heat(380,196,8,32,5,18,'#1D9E75',(r,c)=>v(ID[r],c),[]);
+for(let r=0;r<8;r++)s+=T(372,205+18*r,CH[r],'ts','end');
+s+=T(552,250,'ID used once,','ts','start')+T(552,268,'then dropped','ts','start');
+return s;}
+function s1(){let s=T(120,50,'token rows (8, 32)','th')+T(330,50,'position table P (8 × 32)','th')+T(540,50,'x = sum (8, 32)','th');
+s+=heat(40,70,8,16,10,16,'#1D9E75',(r,c)=>v(ID[r],c),[1,7]);
+s+=heat(250,70,8,16,10,16,'#EF9F27',(r,c)=>v(100+r,c),[1,7]);
+s+=heat(460,70,8,16,10,16,'#7F77DD',X0,[1,7]);
+s+=T(225,134,'+','th')+T(435,134,'=','th');
+for(let r=0;r<8;r++)s+=T(32,78+16*r,CH[r],'ts','end');
+s+=T(340,225,'Outlined rows are both i: same token row, different position row, so different x','ts');
+return s;}
+function s2(){let s='';
+[[44,'q','Wq',WQ,Q,'what each row looks for'],[162,'k','Wk',WK,K,'what each row offers'],[280,'v','Wv',WV,V,'what each row hands over']].forEach(([y,n,w,W,R,d])=>{
+s+=T(78,y-14,'LN₁(x) (8, 32)','th')+heat(30,y+24,8,32,3,6,'#7F77DD',X0,[]);
+s+=T(148,y+48,'·','th')+T(218,y-14,`${w} (32 × 32)`,'th')+heat(170,y,32,32,3,3,'#378ADD',W,[]);
+s+=T(286,y+48,'=','th')+T(354,y-14,`${n} (8, 32)`,'th')+heat(306,y+24,8,32,3,6,'#D85A30',R,[]);
+s+=T(420,y+40,`${n} = LN₁(x) · ${w}`,'th','start')+T(420,y+58,d,'ts','start');});
+s+=T(340,402,'The input is layer norm 1 of x. Wq, Wk, Wv are learned and used without a bias.','ts');
+return s;}
+function s3(){let s=T(104,40,'Wq (32 × 32), same cut','th');
+for(let k=0;k<nh;k++)s+=T(40+hs*4*k+hs*2,58,'h'+(k+1),'ts')+heat(40+hs*4*k,70,32,hs,4,4,hc(k),(r,c)=>WQ(r,k*hs+c),[]);
+s+=`<line class="leader" x1="172" y1="134" x2="296" y2="94"/>`+T(234,96,'same cut','ts');
+s+=T(396,40,'q, k, v (8, 32) each','th');
+[['q',70,Q],['k',150,K],['v',230,V]].forEach(([n,y,F])=>{for(let k=0;k<nh;k++){if(n=='q')s+=T(300+hs*6*k+hs*3,58,'h'+(k+1),'ts');s+=heat(300+hs*6*k,y,8,hs,6,6,hc(k),(r,c)=>F(r,k*hs+c),[]);}s+=T(504,y+24,n,'th','start');});
+s+=T(340,306,`${nh} head${nh>1?'s':''} × ${hs} channels each`,'th');
+s+=T(340,328,'Slicing q, k, v is the only step. The Wq blocks show the same cut, not a second operation.','ts');
+return s;}
+function s4(){const col=hc(hd),cwq=96/hs,rhk=176/hs;let s=T(78,40,`q_h (8, ${hs})`,'th')+T(238,40,`k_hᵀ (${hs}, 8)`,'th')+T(438,40,'scores (8, 8)','th');
+for(let r=0;r<8;r++)s+=T(24,81+22*r,CH[r],'ts','end');
+for(let j=0;j<8;j++)s+=T(161+22*j,62,CH[j],'ts')+T(361+22*j,62,CH[j],'ts');
+s+=heat(30,70,8,hs,cwq,22,col,(r,c)=>Q(r,hd*hs+c),[si])+T(138,158,'·','th');
+s+=heat(150,70,hs,8,22,rhk,col,(r,c)=>K(c,hd*hs+r),[]);
+s+=`<rect x="${150+22*sj}" y="70" width="22" height="176" fill="none" stroke="#BA7517" stroke-width="2"/>`;
+s+=T(338,158,'=','th')+heat(350,70,8,8,22,22,col,(r,c)=>Math.min(1,b(hd,r,c)/3.5),[]);
+s+=`<rect x="${350+22*sj}" y="${70+22*si}" width="22" height="22" fill="none" stroke="#BA7517" stroke-width="2"/>`;
+for(let i=0;i<8;i++)for(let j=0;j<8;j++)s+=`<rect x="${350+22*j}" y="${70+22*i}" width="22" height="22" fill="transparent" style="cursor:pointer" onclick="pickCell(${i},${j})"/>`;
+s+=T(340,274,`score(${si}, ${sj}) = q_${si} · k_${sj} = ${b(hd,si,sj).toFixed(2)}`,'th');
+s+=T(340,298,`Each cell is one dot product: row ${si} of q_h against row ${sj} of k_h (a column of k_hᵀ).`,'ts');
+s+=T(340,320,'Cells above the diagonal are computed too. The next step blocks them.','ts');
+s+=T(340,342,'click a cell to change the pair','ts');
+return s;}
+function s5(){const M=Wm(hd),col=hc(hd),cw=12,y0=64,X=[20,152,284,416,548],cv=96/hs,VS=(r,c)=>V(r,hd*hs+c),O=outMat(hd);
+const ti=[['scores','q_h · k_hᵀ'],['masked','future = −∞'],['weights','after softmax'],['v_h',`(8, ${hs})`],['out_h','weights · v_h']];
+let s='';ti.forEach((t,k)=>{s+=T(X[k]+48,34,t[0],'th')+T(X[k]+48,50,t[1],'ts');});
+for(let r=0;r<8;r++)s+=T(14,y0+cw*r+6,CH[r],'ts','end');
+s+=heat(X[0],y0,8,8,cw,cw,col,(r,c)=>Math.min(1,b(hd,r,c)/3.5),[sel]);
+s+=heat(X[1],y0,8,8,cw,cw,col,(r,c)=>c>r?-0.16:Math.min(1,b(hd,r,c)/3.5),[sel]);
+for(let r=0;r<8;r++)for(let c=r+1;c<8;c++)s+=`<rect x="${X[1]+c*cw}" y="${y0+r*cw}" width="${cw}" height="${cw}" fill="#888780" opacity="0.3"/>`;
+s+=heat(X[2],y0,8,8,cw,cw,col,(r,c)=>c>r?-0.16:Math.min(1,M[r][c]*1.6),[sel]);
+for(let r=0;r<8;r++)for(let c=r+1;c<8;c++)s+=`<rect x="${X[2]+c*cw}" y="${y0+r*cw}" width="${cw}" height="${cw}" fill="#888780" opacity="0.08"/>`;
+s+=heat(X[3],y0,8,hs,cv,cw,col,VS,[]);
+for(let r=sel+1;r<8;r++)s+=`<rect x="${X[3]}" y="${y0+r*cw}" width="96" height="${cw}" style="fill:var(--surface-2)" opacity="0.7"/>`;
+s+=heat(X[4],y0,8,hs,cv,cw,col,(r,c)=>O[r][c],[sel]);
+s+=A(118,y0+48,150,y0+48)+A(250,y0+48,282,y0+48)+T(400,y0+48,'·','th')+T(532,y0+48,'=','th');
+s+=T(200,180,'the same 8 × 8 matrix at three stages','ts');
+const terms=[];for(let j=0;j<=sel;j++)terms.push(M[sel][j].toFixed(2)+'·v'+j);
+s+=T(340,206,`out row ${sel} = `+terms.join(' + '),'ts');
+s+=T(340,228,`Row ${sel} of the weights has ${sel+1} non-zero entries, so it blends rows 0 to ${sel} of v_h.`,'ts');
+s+=T(340,250,'Gray = masked. Everything right of the diagonal is 0, so no position sees the future.','ts');
+s+=T(340,272,'out_h is what the next step collects from every head.','ts');
+for(let r=0;r<8;r++)s+=`<rect x="20" y="${y0+cw*r}" width="360" height="${cw}" fill="transparent" style="cursor:pointer" onclick="pickRow(${r})"/><rect x="548" y="${y0+cw*r}" width="96" height="${cw}" fill="transparent" style="cursor:pointer" onclick="pickRow(${r})"/>`;
+return s;}
+function s6(){const cw=12,tot=384+24*(nh-1),st=(680-tot)/2;let s='';
+for(let k=0;k<nh;k++){const O=outMat(k),bx=st+k*(hs*cw+24),cx=bx+hs*cw/2,sg=148+hs*cw*k+hs*cw/2;
+s+=T(cx,28,`out_h${k+1}`,'ts')+heat(bx,44,8,hs,cw,12,hc(k),(r,c)=>O[r][c],[sel]);
+s+=A(cx,142,sg,188)+heat(148+hs*cw*k,190,8,hs,cw,12,hc(k),(r,c)=>O[r][c],[]);}
+s+=`<rect x="148" y="${190+12*sel}" width="384" height="12" fill="none" stroke="#BA7517" stroke-width="2"/>`;
+s+=T(548,238,'concat (8, 32)','ts','start')+T(548,256,`row ${sel}: ${nh} chunk${nh>1?'s':''} of ${hs}`,'ts','start');
+s+=T(340,308,'then one learned matrix mixes the joined channels, and a bias is added','ts');
+s+=T(68,352,'concat (8, 32)','th');
+for(let k=0;k<nh;k++){const O=outMat(k);s+=heat(20+hs*3*k,366,8,hs,3,6,hc(k),(r,c)=>O[r][c],[sel]);}
+s+=T(132,390,'·','th')+T(196,328,'Wo (32 × 32)','th')+heat(148,342,32,32,3,3,'#378ADD',(r,c)=>v(1300+r*3,c),[]);
+s+=T(258,390,'+','th')+T(320,352,'b_o (32)','th')+heat(272,384,1,32,3,12,'#378ADD',(r,c)=>v(1350,c),[])+T(320,414,'added to every row','ts');
+s+=T(382,390,'=','th')+T(444,352,'attention output (8, 32)','th')+heat(396,366,8,32,3,6,'#7F77DD',(r,c)=>v(600+r,c),[sel]);
+s+=T(506,384,'goes to: add to x,','ts','start')+T(506,402,'then the MLP','ts','start');
+return s;}
+function s7(){const at=(r,c)=>v(620+r,c);
+let s=T(120,50,'raw x before (8, 32)','th')+T(330,50,'attention output (8, 32)','th')+T(540,50,'x after (8, 32)','th');
+s+=heat(40,70,8,16,10,16,'#7F77DD',X0,[7])+heat(250,70,8,16,10,16,'#1D9E75',at,[7])+heat(460,70,8,16,10,16,'#7F77DD',(r,c)=>(X0(r,c)+at(r,c))/2,[7]);
+s+=T(225,134,'+','th')+T(435,134,'=','th');
+s+=T(340,225,'Outlined row is the last position: it keeps what it knew and adds what it gathered','ts');
+s+=T(340,245,'The skip path carries the raw x, not the normalized copy. The same add repeats after the MLP.','ts');
+return s;}
+function s8(){const F=(r,c)=>v(50+r*13,c),P='#7F77DD',G='#1D9E75',Bl='#378ADD';let s='';
+s+=T(68,36,'LN₂(x) (8, 32)','th')+T(214,36,'W1 (32 × 128)','th')+T(391,36,'b1 (128)','th')+T(573,36,'hidden (8, 128)','th');
+s+=heat(20,50,8,32,3,12,P,(r,c)=>v(620+r,c),[sel])+T(130,98,'·','th');
+s+=heat(142,50,16,36,4,6,Bl,(r,c)=>v(1400+r,c),[])+T(300,98,'+','th');
+s+=heat(314,92,1,128,1.2,12,Bl,(r,c)=>v(1450,c),[])+T(482,98,'=','th');
+s+=heat(496,50,8,128,1.2,12,G,F,[sel]);
+s+=`<path d="M573 150V176H97V204" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#${MK})"/>`+T(335,164,'ReLU: negatives become 0','ts');
+s+=T(97,214,'after ReLU (8, 128)','th')+T(250,214,'W2 (128 × 32)','th')+T(374,214,'b2 (32)','th')+T(498,214,'out (8, 32)','th');
+s+=heat(20,228,8,128,1.2,12,G,(r,c)=>F(r,c)<0.45?-0.16:F(r,c),[sel])+T(188,276,'·','th');
+s+=heat(202,228,64,16,6,1.5,Bl,(r,c)=>v(1500+r,c),[])+T(312,276,'+','th');
+s+=heat(326,270,1,32,3,12,Bl,(r,c)=>v(1550,c),[])+T(436,276,'=','th');
+s+=heat(450,228,8,32,3,12,P,(r,c)=>v(731+r,c),[sel]);
+s+=T(560,252,'same weights and','ts','start')+T(560,270,'biases for every','ts','start')+T(560,288,'row, one at a time','ts','start');
+s+=T(340,346,'Each layer adds its bias vector to every row. ReLU sets negatives to 0 (GPT-2 uses GELU).','ts');
+s+=T(340,368,`Row ${sel} of out depends only on row ${sel} of x. No row sees another here.`,'ts');
+for(let r=0;r<8;r++){const y1=50+12*r,y2=228+12*r;s+=`<rect x="20" y="${y1}" width="96" height="12" fill="transparent" style="cursor:pointer" onclick="pickRow(${r})"/><rect x="496" y="${y1}" width="154" height="12" fill="transparent" style="cursor:pointer" onclick="pickRow(${r})"/><rect x="20" y="${y2}" width="154" height="12" fill="transparent" style="cursor:pointer" onclick="pickRow(${r})"/><rect x="450" y="${y2}" width="96" height="12" fill="transparent" style="cursor:pointer" onclick="pickRow(${r})"/>`;}
+return s;}
+function s9(){const w=94,g=12,y=70,h=44,x=i=>28+i*(w+g);
+const L=['layer norm 1','attention','add','layer norm 2','MLP','add'],Kc=['c-teal','c-gray','c-gray','c-teal','c-gray','c-gray'];
+let s='';for(let i=0;i<6;i++)s+=B(x(i),y,w,h,Kc[i],L[i]);
+for(let i=0;i<5;i++)s+=A(x(i)+w,y+22,x(i+1),y+22);
+s+=A(2,y+22,26,y+22);
+s+=`<path d="M16 ${y+22}V44H${x(2)+47}V${y-2}" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#${MK})"/>`;
+s+=`<path d="M${x(2)+w} ${y+22}V150H${x(5)+47}V${y+h+2}" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#${MK})"/>`;
+s+=T(160,32,'skip path: raw x','ts')+T(468,168,'skip path: raw x','ts');
+s+=T(340,196,'Shape stays (8, 32) throughout, so N blocks can be stacked.','ts');
+s+=T(340,216,'Each layer norm has its own learned scale and offset (32 numbers each).','ts');
+s+=T(340,246,'The two i rows (positions 1 and 7) as they travel through the blocks','th');
+[[130,'after embedding',(r,c)=>X0(r==0?1:7,c)],[340,'after block 1',(r,c)=>v(700+(r?7:1),c)],[550,'after block N',(r,c)=>v(800+(r?7:1),c)]].forEach(([cx,t,f])=>{s+=T(cx,272,t,'ts')+heat(cx-64,284,1,32,4,20,'#7F77DD',(r,c)=>f(0,c),[])+heat(cx-64,310,1,32,4,20,'#7F77DD',(r,c)=>f(1,c),[]);});
+s+=T(58,294,'pos 1','ts','end')+T(58,320,'pos 7','ts','end');
+s+=T(340,356,'Same letter, but position and context pull the two rows apart','ts');
+return s;}
+function s10(){let s=T(68,30,'LN(x) (8, 32)','th')+T(205,30,'W_out (32 × 65)','th')+T(359,30,'b_out (65)','th')+T(513,30,'logits (8, 65)','th')+T(590,30,'target','ts','start');
+s+=heat(20,44,8,32,3,14,'#7F77DD',(r,c)=>v(800+r,c),[])+T(128,100,'·','th');
+s+=heat(140,44,32,65,2,3.5,'#378ADD',(r,c)=>v(1600+r,c),[])+T(282,100,'+','th');
+s+=heat(294,94,1,65,2,12,'#378ADD',(r,c)=>v(1650,c),[])+T(436,100,'=','th');
+s+=heat(448,44,8,65,2,14,'#EF9F27',(r,c)=>v(r*7+1,c),[]);
+for(let r=0;r<8;r++){s+=`<rect x="${448+TID[TG[r]]*2}" y="${44+r*14}" width="2" height="14" fill="none" stroke="#1D9E75" stroke-width="2"/>`+T(590,51+r*14,`→ ${TG[r]}`,'ts','start');}
+s+=T(340,190,'Green outline = the correct next character. Training pushes that score up.','ts');
+s+=T(340,212,'Each of the 65 columns is one possible character. Every row predicts at once.','ts');
+s+=T(340,234,'b_out adds one number per character to every row.','ts');
+return s;}
+function sLoss(){const {Z,P}=probs(),tid=r=>TID[TG[r]];let s=T(154,34,'logits (8, 65)','th')+T(434,34,'probabilities (8, 65)','th')+T(605,34,'loss','th');
+for(let r=0;r<8;r++)s+=T(32,58+16*r,CH[r],'ts','end');
+s+=heat(40,50,8,65,3.5,16,'#378ADD',(r,c)=>Math.min(1,Math.max(0,(Z[r][c]+1)/6)),[sel]);
+s+=T(294,100,'softmax','ts')+A(272,114,316,114);
+s+=heat(320,50,8,65,3.5,16,'#EF9F27',(r,c)=>Math.min(1,P[r][c]*10),[sel]);
+let tot=0;
+for(let r=0;r<8;r++){const l=-Math.log(P[r][tid(r)]);tot+=l;s+=`<rect x="${40+tid(r)*3.5}" y="${50+16*r}" width="3.5" height="16" fill="none" stroke="#1D9E75" stroke-width="2"/><rect x="${320+tid(r)*3.5}" y="${50+16*r}" width="3.5" height="16" fill="none" stroke="#1D9E75" stroke-width="2"/>`+T(580,58+16*r,l.toFixed(2),'ts','start');}
+const p=P[sel][tid(sel)],l=-Math.log(p);
+s+=T(340,214,`row ${sel}: p(correct '${TG[sel]}') = ${p.toFixed(3)}, so loss = −ln p = ${l.toFixed(2)}`,'th');
+s+=T(340,240,`average over the 8 rows: ${(tot/8).toFixed(2)}  (untrained is about ${Math.log(65).toFixed(2)} = ln 65)`,'ts');
+s+=T(340,262,'Training pushes the green cells up: more probability on the correct character.','ts');
+s+=T(340,284,'Drag the slider to see the same rows as the model trains. Click a row to inspect it.','ts');
+for(let r=0;r<8;r++)s+=`<rect x="40" y="${50+16*r}" width="610" height="16" fill="transparent" style="cursor:pointer" onclick="pickRow(${r})"/>`;
+return s;}
+function sBack(){const {P}=probs(),tid=r=>TID[TG[r]];let s=T(154,34,'dlogits = probs − one-hot (8, 65)','th');
+for(let r=0;r<8;r++)s+=T(32,58+16*r,CH[r],'ts','end');
+s+=heat(40,50,8,65,3.5,16,'#EF9F27',(r,c)=>Math.min(1,P[r][c]*10),[]);
+for(let r=0;r<8;r++)s+=`<rect x="${40+tid(r)*3.5}" y="${50+16*r}" width="3.5" height="16" fill="#1D9E75" opacity="0.9"/>`;
+s+=`<rect x="40" y="196" width="10" height="10" fill="#1D9E75"/>`+T(56,201,'target cell: p − 1, raise its score','ts','start');
+s+=`<rect x="40" y="216" width="10" height="10" fill="#EF9F27"/>`+T(56,221,'other cells: p, lower their scores','ts','start');
+[[300,'1. W_out: LN(x)ᵀ · dlogits (32, 65)'],[300,'2. b_out: column sums (65)'],[300,'3. LN(x): dlogits · W_outᵀ (8, 32)'],[300,'4. back through the final layer norm'],[316,'into the last block:'],[316,'Wo, W1, W2, biases, layer norms'],[316,'attention weights, then Wq, Wk, Wv'],[300,'5. block by block, back to the start:'],[316,'token table (rows used), position table']].forEach((o,i)=>{s+=T(o[0],58+i*20,o[1],'ts','start');});
+s+=T(340,270,'Every parameter gets a gradient: how much the loss changes if that weight moves a little.','ts');
+s+=T(340,292,'The green cells say raise this score, the amber cells say lower it.','ts');
+return s;}
+function sUpd(){const t=tr/100,x0=300,x1=650,yT=60,yB=240,X=q=>x0+q*(x1-x0),Y=l=>yB-(l-1)/3.5*(yB-yT);let s='';
+[['get_batch','B random windows of 8'],['forward pass','logits, then loss'],['backward pass','gradient for every weight'],['optimizer step','AdamW nudges each weight']].forEach((o,i)=>{s+=B(44,40+64*i,200,40,'c-gray',o[0],o[1]);if(i<3)s+=A(144,82+64*i,144,102+64*i);});
+s+=`<path d="M44 252H28V60H42" fill="none" stroke="#888780" stroke-width="1.5" marker-end="url(#${MK})"/>`;
+s+=`<path d="M300 60V240H650" fill="none" stroke="#888780" stroke-width="1"/>`+T(292,50,'loss','ts','end');
+[1,2,3,4].forEach(l=>{s+=T(292,Y(l),String(l),'ts','end')+`<line x1="300" y1="${Y(l)}" x2="650" y2="${Y(l)}" stroke="#888780" stroke-width="0.5" opacity="0.3"/>`;});
+s+=`<line x1="300" y1="${Y(4.17)}" x2="650" y2="${Y(4.17)}" stroke="#888780" stroke-width="1" stroke-dasharray="4 3"/>`+T(650,Y(4.17)-10,'ln 65 = 4.17 (untrained)','ts','end');
+let tp='',vp='';for(let i=0;i<=60;i++){const q=i/60,L=trainLoss(q)+(v(i,3)-0.5)*0.08,Vl=trainLoss(q)+0.02+0.3*q*q;tp+=(i?' ':'')+X(q).toFixed(1)+','+Y(L).toFixed(1);vp+=(i?' ':'')+X(q).toFixed(1)+','+Y(Vl).toFixed(1);}
+s+=`<polyline points="${tp}" fill="none" stroke="#EF9F27" stroke-width="2"/><polyline points="${vp}" fill="none" stroke="#378ADD" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+s+=`<line x1="430" y1="44" x2="450" y2="44" stroke="#EF9F27" stroke-width="2"/>`+T(456,44,'train','ts','start')+`<line x1="500" y1="44" x2="520" y2="44" stroke="#378ADD" stroke-width="1.5" stroke-dasharray="4 3"/>`+T(526,44,'validation','ts','start');
+const L0=trainLoss(t);s+=`<circle cx="${X(t)}" cy="${Y(L0)}" r="5" fill="#EF9F27"/>`+T(X(t),Y(L0)+16,`step ${Math.round(t*5000)}: loss ${L0.toFixed(2)}`,'ts',t>0.6?'end':'start');
+s+=T(475,262,'training steps →','ts');
+s+=T(340,298,'Repeat for thousands of steps, each on a fresh random batch.','ts');
+s+=T(340,320,'The gap between train and validation shows whether the model generalizes or only memorizes.','ts');
+return s;}
+function s11(){const dims=[65,32,32,128,32,65],cols=['#378ADD','#7F77DD','#7F77DD','#1D9E75','#7F77DD','#378ADD'],nm=['token ID','embedded x','attention','MLP hidden','block output','logits'],sb=['one of 65','C = 32','C = 32','4 × C','C = 32','one per char'];let s='';
+dims.forEach((d,k)=>{const cx=70+112*k,h=d*1.4;s+=`<rect x="${cx-30}" y="${150-h/2}" width="60" height="${h}" rx="4" fill="${cols[k]}" opacity="0.35" stroke="${cols[k]}" stroke-width="1"/>`+T(cx,150,String(d),'th')+T(cx,262,nm[k],'th')+T(cx,280,sb[k],'ts');if(k<5)s+=A(cx+34,150,cx+78,150);});
+s+=T(340,318,'The vocabulary size only appears where a token comes in and where a prediction goes out.','ts')+T(340,340,'In between, the model works in a 32-dimensional feature space.','ts');
+return s;}
+function s12(){const I=[['h','input'],['e','token table','65 × 32','one row per character',1],['e','position table','8 × 32','one row per slot',0],['h','each block, repeated N times'],['e','layer norm 1','scale, offset: 32 each','',0],['e','Wq, Wk, Wv','32 × 32 each','no bias',0],['e','Wo + b_o','32 × 32, plus 32','',0],['e','layer norm 2','scale, offset: 32 each','',0],['e','W1 + b1','32 × 128, plus 128','',0],['e','W2 + b2','128 × 32, plus 32','',0],['h','after the last block'],['e','final layer norm','scale, offset: 32 each','',0],['e','W_out + b_out','32 × 65, plus 65','one column per character',1]];
+let s='',y=14;I.forEach((it,i)=>{if(it[0]=='h'){if(i>0)y+=8;s+=T(20,y+10,it[1],'ts','start');y+=22;}else{s+=`<circle cx="26" cy="${y+10}" r="5" fill="${it[4]?'#378ADD':'#7F77DD'}"/>`+T(42,y+10,it[1],'th','start')+T(230,y+10,it[2],'ts','start')+T(440,y+10,it[3],'ts','start');y+=22;}});
+s+=T(340,y+18,'Blue dots are the only places that depend on the vocabulary size (65).','ts')+T(340,y+40,'Wq, Wk, Wv are used without a bias. Every other linear layer has one.','ts');
+return s;}
+const S=[
+{t:'Batch and targets',f:sBatch,h:330,m:0,c:'A batch is B random windows of 8 characters. The target for each position is the next character, so y is x shifted by one.'},
+{t:'Token IDs and lookup',f:s0,h:400,m:1,c:'The ID is only an address. It copies one row out of the token table, then it is dropped.'},
+{t:'Add position',f:s1,h:250,m:1,c:'The position table adds a row per position, so the same letter gets a different vector at each position. Letters are our labels, not model input.'},
+{t:'Layer norm 1',f:()=>lnStep(1),h:335,m:2,c:'Each row is normalized on its own, then scaled and shifted by learned γ and β. This normalized copy feeds Wq, Wk, Wv. Click a row.'},
+{t:'Q, K, V projections',f:s2,h:420,m:2,c:'Three learned 32 × 32 matrices turn the normalized x into q, k and v. Every row is multiplied by the same matrix. No bias here.'},
+{t:'Slice into heads',f:s3,h:350,m:2,c:'Choose the number of heads. q, k and v (computed in the previous step) are sliced into column groups, one group per head.'},
+{t:'Scores per head',f:s4,h:366,m:2,c:'Each head multiplies its slice of q by its slice of k. Every cell of the 8 × 8 result is one dot product.'},
+{t:'Weights, then mix the values',f:s5,h:296,m:2,c:'Mask, softmax, then multiply by v_h. Click a row to see how one output row is blended.'},
+{t:'Join heads and project',f:s6,h:462,m:2,c:'Each head hands over only its out_h from the mixing step. Scores and weights are not carried forward. Wo has a bias b_o added to every row.'},
+{t:'Residual add',f:s7,h:270,m:3,c:'The attention output is added back onto the raw x from the skip path, so the row keeps what it knew.'},
+{t:'Layer norm 2',f:()=>lnStep(2),h:335,m:4,c:'Same operation with its own γ and β, applied to the new x. This normalized copy feeds W1 in the MLP.'},
+{t:'MLP on all 8 rows',f:s8,h:392,m:4,c:'The input is the normalized copy of x. Both layers add a bias, and every row goes through the same W1, b1, W2, b2 with a ReLU between. Click a row.'},
+{t:'Whole block, repeated',f:s9,h:372,m:-1,c:'Layer norm, attention, add, layer norm, MLP, add. Rows keep their shape, but after several blocks a row is a letter in context, not just the letter.'},
+{t:'Final layer norm',f:()=>lnStep(3),h:335,m:5,c:'One last normalization after the final block, with its own γ and β. Its output feeds W_out.'},
+{t:'Output head: W_out',f:s10,h:260,m:5,c:'The normalized x is multiplied by W_out (32 × 65) and a bias b_out is added, giving a score for every possible next character at every position.'},
+{t:'Softmax and loss',f:sLoss,h:305,m:6,c:'Softmax turns each row of logits into probabilities. The loss is minus the log of the probability given to the correct character, averaged over all rows.'},
+{t:'Backpropagation',f:sBack,h:315,m:-3,c:'The gradient of the loss with respect to the logits is simply probabilities minus one-hot. It then flows back through every matrix.'},
+{t:'Update and repeat',f:sUpd,h:340,m:-3,c:'The optimizer nudges every weight a little, then the loop repeats on a fresh batch. The loss falls from about ln 65 as the model learns.'},
+{t:'Width along the model',f:s11,h:365,m:-3,c:'The vocabulary size (65) appears only where a token enters and where a prediction leaves. Everything in between works in 32 channels.'},
+{t:'Every learned matrix and bias',f:s12,h:385,m:-3,c:'All learned parameters in order. Blue marks the only two places that depend on the vocabulary size.'}];
+function mapSvg(m){const L=['Batch','Embed','Attention','Add','MLP','Output','Loss'];let s='';
+const act=i=>m===-3?true:m===-1?(i>=2&&i<=4):i===m;
+L.forEach((t,i)=>{s+=B(14+i*94,28,78,32,act(i)?'c-purple':'c-gray',t);});
+for(let i=0;i<6;i++)s+=A(14+i*94+79,44,14+(i+1)*94-2,44);
+s+=`<rect x="194" y="16" width="282" height="52" rx="8" fill="none" stroke="#888780" stroke-width="0.5" stroke-dasharray="4 3"/>`+T(335,8,'× N blocks','ts');
+s+=`<path d="M617 62V84H53V64" fill="none" stroke="#888780" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#${MK})"/>`+T(335,96,'update the weights, then take the next batch','ts');
+return s;}
+const pills=document.getElementById('pills'),hb=document.getElementById('hb'),hh=document.getElementById('hh');
+S.forEach((o,i)=>{const bt=document.createElement('button');bt.textContent=i+1;bt.setAttribute('aria-label','Step '+(i+1)+': '+o.t);bt.onclick=()=>{cur=i;render();};pills.appendChild(bt);});
+[1,2,4,8].forEach(k=>{const bt=document.createElement('button');bt.textContent=k;bt.onclick=()=>{nh=k;hs=32/k;if(hd>=k)hd=0;render();};hb.appendChild(bt);});
+document.getElementById('bk').onclick=()=>{if(cur>0){cur--;render();}};
+document.getElementById('nx').onclick=()=>{if(cur<S.length-1){cur++;render();}};
+document.getElementById('trin').oninput=e=>{tr=+e.target.value;render();};
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.key==='ArrowRight'&&cur<S.length-1){cur++;render();}if(e.key==='ArrowLeft'&&cur>0){cur--;render();}});
+function pickRow(r){sel=r;render();}
+function pickCell(i,j){si=i;sj=j;render();}
+function setHead(k){hd=k;render();}
+function render(){const o=S[cur];
+MK='arrow2';document.getElementById('stage').innerHTML=o.f();
+MK='arrow';document.getElementById('mapg').innerHTML=mapSvg(o.m);
+document.getElementById('cv').setAttribute('viewBox','0 0 680 '+o.h);document.getElementById('ttl').textContent=(cur+1)+'. '+o.t;document.getElementById('cap').textContent=o.c;
+const showHC=cur>=5&&cur<=8,showHead=cur==6||cur==7,showTr=cur>=15&&cur<=17;
+document.getElementById('hctl').style.display=showHC?'flex':'none';
+document.getElementById('hl2').style.display=showHead?'inline':'none';
+hh.style.display=showHead?'flex':'none';
+document.getElementById('tctl').style.display=showTr?'flex':'none';
+document.getElementById('trv').textContent='step '+Math.round(tr*50);
+hh.innerHTML='';for(let k=0;k<nh;k++){const bt=document.createElement('button');bt.textContent='h'+(k+1);bt.className=k==hd?'on':'';bt.onclick=()=>setHead(k);hh.appendChild(bt);}
+[...pills.children].forEach((bt,i)=>bt.classList.toggle('on',i==cur));[...hb.children].forEach(bt=>bt.classList.toggle('on',+bt.textContent===nh));}
+render();
+</script>
+</body>
+</html>
